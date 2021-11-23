@@ -5,13 +5,10 @@ CR		equ		0dh
 LF		equ		0ah 
 
 	.data
-FileName		db		9 dup (?)		; Nome do arquivo a ser lido.
-FileType		db		".txt", 0		; Tipo do arquivo.
-FileTotalName	db		12 dup (?)		; Variável que vai guardar o nome completo do arquivo.
+FileName		db		8 dup (?)		; Nome do arquivo a ser lido.
 FileBuffer		db		10 dup (?)		; Buffer de leitura do arquivo.
 FileHandle		dw		0				; Handler do arquivo.
 FileNameBuffer	db		150 dup (?)		; Buffer do nome do arquivo.
-Count			dw		0				; Variável que vai guardar o fim do nome do arquivo.
 
 MsgPedeArquivo		db	"Nome do arquivo: ", 0
 MsgErroOpenFile		db	"Erro na abertura do arquivo.", CR, LF, 0
@@ -24,7 +21,6 @@ MsgErroReadFile		db	"Erro na leitura do arquivo.", CR, LF, 0
 ;--------------------------------------------------------------------
     ;GetFileName();
 	call	GetFileName
-	call	GetExtension
 
     ;if ( (ax=fopen(ah=0x3d, dx->FileName) ) ) {
 	;	printf("Erro na abertura do arquivo.\r\n");
@@ -124,7 +120,6 @@ GetFileName	proc	near
 
 	;	// Coloca o '\0' no final do string
 	;	*d = '\0';
-	mov		Count, di
 	mov		byte ptr es:[di],0
 	ret
 
@@ -152,33 +147,6 @@ ps_1:
 
 printf_s	endp
 
-;--------------------------------------------------------------------
-;   Checa se FileName tem extensão em txt e converte para .txt
-;--------------------------------------------------------------------
-GetExtension proc	near
-	lea 	si, FileName
-	lea		di, FileTotalName
-	mov		cx, 8
-	rep		movsb
-	lea		di, FileTotalName
-	mov		cx, 8
-	cld						;Limpa o Direction Flag
-	mov 	al,'.'
-	repne	scasb	
-	jne		Put_extension
-	dec		di
-	jmp		End_GetExtension
-	
-
-Put_extension:
-	mov 	di,	Count
-	lea		si, FileType
-	mov		cx, 5
-	rep		movsb
-
-End_GetExtension:
-	ret
-GetExtension endp
 ;--------------------------------------------------------------------
 ;   Fim do programa.
 ;--------------------------------------------------------------------
