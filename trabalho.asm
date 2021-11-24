@@ -6,6 +6,7 @@ LF		equ		0ah
 
 	.data
 FileName			db		8 dup (?)		; Nome do arquivo a ser lido.
+Random				db		4 dup (?)		; Essa variável vai ser alocada dps.
 FileType			db		".res", 0		; Tipo do arquivo.
 Count_file			dw		0				; Variável que vai guardar o fim do nome do arquivo.
 FileBuffer			db		10 dup (?)		; Buffer de leitura do arquivo.
@@ -52,13 +53,9 @@ sw_m				dw		0
 ;--------------------------------------------------------------------	
 	;GetFileName();
 	call	GetFileName	
-	call	GetFileDestName
 
 	;printf ("\r\n");
 	lea		bx,MsgCRLF
-	call	printf_s
-
-	lea		bx,FileName
 	call	printf_s
 
     ;if ( (ax=fopen(ah=0x3d, dx->FileName) ) ) {
@@ -68,27 +65,29 @@ sw_m				dw		0
 	mov		al,0
 	lea		dx,FileName
 	mov		ah,3dh
-	int		21h								;fopen FileName
+	int		21h				;fopen FileName
 	jnc		Continua1
 	
+	; Printa um erro na tela.
 	lea		bx,MsgErroOpenFile
 	call	printf_s
 	mov		al,1
 	jmp		End_program
 	
+	; Finaliza o programa.
 	.exit	1
 
-    Continua1:
-
+Continua1:
 	;FileHandle = ax
-	mov		FileHandle,ax		; Salva handle do arquivo
-	jmp		End_program
+	mov		FileHandle,ax	; Salva handle do arquivo
 
-	;while(1) {
+	; Backup na pilha.
 	push	cx
 	push	bx
+
 	mov 	cx, 100
 	mov 	bx, 0
+	; Seta o vetor de inteiros como FFFFh.
 Set_int_vetloop:
 	mov 	final_int_number[bx], 0FFFFh
 	inc 	bx
@@ -96,11 +95,13 @@ Set_int_vetloop:
 
 	mov 	cx, 100
 	mov 	bx, 0
+	; Seta o vetor de fracionários como FFFFh.
 Set_frac_vetloop:
 	mov 	final_frac_number[bx], 0FFFFh
 	inc 	bx
 	loop 	Set_int_vetloop
-
+	
+	; Retira o backup da pilha.
 	pop		bx
 	pop     cx
 
@@ -116,17 +117,23 @@ Again:
 	mov		cx,1
 	lea		dx,FileBuffer
 	int		21h
+	; Caso não ocorra erro na leitura, continua.
 	jnc		Continua2
 	
+	; Caso ocorra erro na leitura.
 	lea		bx,MsgErroReadFile
 	call	printf_s	
 	mov		al,1
+	; Fecha tudo.
 	jmp		CloseAndFinal
 
 Continua2:
 	;if (ax==0)	fclose(bx=FileHandle);
+	; Se ax == 0, significa que nenhum byte foi lido.
 	cmp		ax,0
+	; Caso ax != 0, continua.
 	jne		Test_side
+	; Caso ax == 0, fecha tudo.
 	mov		al,0
 	jmp		CloseAndFinal
 
@@ -149,15 +156,15 @@ Continua3_int:
 	je		New_line
 	cmp		bl, LF
 	je		New_line
-	cmp		bl, '.'
+	cmp		bl, 2Eh
 	je		Deal_with_separator
-	cmp		bl, ','
+	cmp		bl, 2Ch
 	je		Deal_with_separator
-	cmp		bl, '0'
+	cmp		bl, 0h
 	jb		Again
-	cmp		bl, '9'
+	cmp		bl, 9h
 	ja		Again
-	cmp		bl, '9'
+	cmp		bl, 9h
 	jb		Found_a_Integer_Number_mid_jump
 	jmp		Again
 
@@ -175,11 +182,11 @@ Continua3_frac:
 	je		New_line
 	cmp		bl, LF
 	je		New_line
-	cmp		bl, '0'
+	cmp		bl, 0h
 	jb		Again_mid_jump
-	cmp		bl, '9'
+	cmp		bl, 9h
 	ja		Again_mid_jump
-	cmp		bl, '9'
+	cmp		bl, 9h
 	jb		Found_a_Frac_Number
 	jmp		Again
 
@@ -271,6 +278,7 @@ CloseAndFinal:
 	int		21h
 
 Create_file:
+	call	GetFileDestName
 	lea		bx, FileName
 	call	printf_s
 	lea		dx,FileName
@@ -281,11 +289,6 @@ Create_file:
 	call	printf_s
 
 Second_part:
-	mov		bx,FileHandleDst		;Fecha arquivo destino
-	call	fclose
-	jmp		End_program
-
-Second_part2:
 	mov		bx,FileHandleDst
 	call	setChar	
 	jnc		Second_part
@@ -301,7 +304,6 @@ Second_part2:
 
 End_program:
 	.exit
-
 
 ;--------------------------------------------------------------------
 ;Função que pega um nome de arquivo digitado pelo usuário.
@@ -340,54 +342,42 @@ GetFileName	endp
 
 ;--------------------------------------------------------------------
 ;   Cria o nome do arquivo destino.
+;	O nome do arquivo destino segue o mesmo do arquivo de entrada.
+;	Adiciona .res ao final, como extensão.
 ;--------------------------------------------------------------------
 GetFileDestName proc	near
-	lea		di, FileName
-	mov		cx, 8
-	cld						;Limpa o Direction Flag
-	mov 	al,2eh
-	repne	scasb	
-	jne		Put_extension
-	jmp		Put_extension2
 
+; Procura um '.' na string do arquivo de entrada.
 Put_extension:
-	mov 	di,	Count_file
-	lea		si, FileType
-	mov		cx, 5
-	rep		movsb
-
-	lea		bx,MsgCRLF
-	call	printf_s
-
-	lea		bx,FileName
-	call	printf_s
-
-Put_extension2:
-	mov		cx, 4
+	mov		cx, 9
 	mov		bx, 0
 Loop_ext:
 	cmp		FileName[bx], 2eh
-	je		Put_extension3
+	je		Put_extension2
 	inc		bx
 	loop	Loop_ext
-	jmp		End_GetExtension
+	jmp		Put_extension3
 
-Put_extension3:
-	inc		bx
+; Caso ache um '.', sobrescreve .res na extensão original do arquivo.
+Put_extension2:
 	inc		bx
 	mov		FileName[bx], 72h
 	inc		bx
 	mov		FileName[bx], 65h
 	inc		bx
 	mov		FileName[bx], 73h
+	jmp		End_GetFileDestName
 
-	lea		bx,MsgCRLF
-	call	printf_s
+; Caso não ache '.', adiciona .res no fim do arquivo.
+Put_extension3:
+	mov     di, Count_file ; Variável que guarda a posição do último elemento do FileName.
+    lea     si, FileType
+    mov     cx, 5
+    rep     movsb  
+	jmp		End_GetFileDestName
 
-	lea		bx,FileName
-	call	printf_s
-
-End_GetExtension:
+; Retorna da função.
+End_GetFileDestName:
 	ret
 GetFileDestName  endp
 
