@@ -5,22 +5,41 @@ CR		equ		0dh
 LF		equ		0ah 
 
 	.data
-FileName		db		8 dup (?)		; Nome do arquivo a ser lido.
-FileBuffer		db		10 dup (?)		; Buffer de leitura do arquivo.
-FileHandle		dw		0				; Handler do arquivo.
-FileNameBuffer	db		150 dup (?)		; Buffer do nome do arquivo.
+FileName			db		8 dup (?)		; Nome do arquivo a ser lido.
+FileBuffer			db		10 dup (?)		; Buffer de leitura do arquivo.
+FileHandle			dw		0				; Handler do arquivo.
+FileNameBuffer		db		150 dup (?)		; Buffer do nome do arquivo.
 
-MsgPedeArquivo		db	"Nome do arquivo: ", 0
-MsgErroOpenFile		db	"Erro na abertura do arquivo.", CR, LF, 0
-MsgErroReadFile		db	"Erro na leitura do arquivo.", CR, LF, 0
+MsgPedeArquivo		db		"Nome do arquivo: ", 0
+MsgErroOpenFile		db		"Erro na abertura do arquivo.", CR, LF, 0
+MsgErroReadFile		db		"Erro na leitura do arquivo.", CR, LF, 0
+MsgCRLF				db		CR, LF, 0
+
+backup				db		0				; Variável para realizar alguns backups.
+flag				db		0				; Variável para testar algumas flags de jump.
+integer				db		0				; Variável para testar se é um inteiro válido.
+frac				db		0				; Variável para testar se é um fracionário válido.
+one_integer_number	db		3 dup (?)		; Variável para guardar um número inteiro.
+one_frac_number		db		2 dup (?)		; Variável para guardar um número fracionário.
+
+BufferWRWORD		db		10 dup (?)			;Variável interna usada na rotina printf_w
+
+;Variaveis para uso interno na função sprintf_w
+sw_n				dw		0
+sw_f				db		0
+sw_m				dw		0
 	
 	.code
 	.startup    
 ;--------------------------------------------------------------------
 ;Função main
-;--------------------------------------------------------------------
-    ;GetFileName();
+;--------------------------------------------------------------------	
+	;GetFileName();
 	call	GetFileName
+
+	;printf ("\r\n");
+	lea		bx,MsgCRLF
+	call	printf_s
 
     ;if ( (ax=fopen(ah=0x3d, dx->FileName) ) ) {
 	;	printf("Erro na abertura do arquivo.\r\n");
@@ -34,21 +53,24 @@ MsgErroReadFile		db	"Erro na leitura do arquivo.", CR, LF, 0
 	
 	lea		bx,MsgErroOpenFile
 	call	printf_s
+	mov		al,1
+	jmp		End_program
 	
 	.exit	1
 
     Continua1:
 
-	;	FileHandle = ax
+	;FileHandle = ax
 	mov		FileHandle,ax		; Salva handle do arquivo
 
-	;	while(1) {
+	;while(1) {
 Again:
-	;		if ( (ax=fread(ah=0x3f, bx=FileHandle, cx=1, dx=FileBuffer)) ) {
-	;			printf ("Erro na leitura do arquivo.\r\n");
-	;			fclose(bx=FileHandle)
-	;			exit(1);
-	;		}
+	;Lê um caractere do arquivo
+	;if ( (ax=fread(ah=0x3f, bx=FileHandle, cx=1, dx=FileBuffer)) ) {
+	;	printf ("Erro na leitura do arquivo.\r\n");
+	;	fclose(bx=FileHandle)
+	;	exit(1);
+	;}
 	mov		bx,FileHandle
 	mov		ah,3fh
 	mov		cx,1
@@ -57,37 +79,109 @@ Again:
 	jnc		Continua2
 	
 	lea		bx,MsgErroReadFile
-	call	printf_s
-	
+	call	printf_s	
 	mov		al,1
 	jmp		CloseAndFinal
 
 Continua2:
-	;		if (ax==0) {
-	;			fclose(bx=FileHandle);
-	;			exit(0);
-	;		}
+	;if (ax==0)	fclose(bx=FileHandle);
 	cmp		ax,0
-	jne		Continua3
-
+	jne		Test_side
 	mov		al,0
 	jmp		CloseAndFinal
 
-Continua3:
-	;		printf("%c", FileBuffer[0]);	// Coloca um caractere na tela
-	mov		ah,2
-	mov		dl,FileBuffer
-	int		21h
-	
-	;	}
+Test_side:
+	;Testa se a flag vale 1.
+	mov		backup, ah
+	mov		ah, flag
+	cmp		ah, 1h
+	je		Continua3_frac
+	jmp		Continua3_int
+
+Continua3_int:
+	mov		ah, backup
+	;bl = FileBuffer[0]
+	mov		bl,FileBuffer
+	cmp		bl, CR
+	je		New_line
+	cmp		bl, LF
+	je		New_line
+	cmp		bl, '.'
+	je		Deal_with_separator
+	cmp		bl, ','
+	je		Deal_with_separator
+	cmp		bl, '0'
+	jb		Again
+	cmp		bl, '9'
+	ja		Again
+	cmp		bl, '9'
+	jb		Found_a_Integer_Number
 	jmp		Again
 
+Continua3_frac:
+	mov		ah, backup
+	;Coloca 0 para a flag novamente.
+	mov		backup, ah
+	mov		ah, 0h
+	mov		flag, ah
+	mov		ah, backup
+
+	;bl = FileBuffer[0]
+	mov		bl,FileBuffer
+	cmp		bl, CR
+	je		New_line
+	cmp		bl, LF
+	je		New_line
+	cmp		bl, '0'
+	jb		Again
+	cmp		bl, '9'
+	ja		Again
+	cmp		bl, '9'
+	jb		Found_a_Frac_Number
+	jmp		Again
+
+Deal_with_separator:
+	;Coloca 1 para a flag.
+	mov		backup, ah
+	mov		ah, 1h
+	mov		flag, ah
+	mov		ah, backup
+	jmp		Again
+
+New_line:
+	jmp		Reset_numbers
+
+Found_a_Integer_Number:
+	jmp		Again
+
+Found_a_Frac_Number:
+	jmp		Again
+
+Reset_numbers:
+	;for (i=0; i<3; ++i)
+	;	one_integer_number[i] = 0
+	lea		di,one_integer_number
+	mov		cx,3
+	mov		ax,0
+	rep 	stosw
+
+	;for (i=0; i<2; ++i)
+	;	one_frac_number[i] = 0
+	lea		di,one_frac_number
+	mov		cx,2
+	mov		ax,0
+	rep 	stosw
+
+	jmp		Again
+
+	
 CloseAndFinal:
+	;fclose(FileHandle->bx)
 	mov		bx,FileHandle		; Fecha o arquivo
 	mov		ah,3eh
 	int		21h
 
-Final:
+End_program:
 	.exit
 
 
@@ -147,6 +241,70 @@ ps_1:
 
 printf_s	endp
 
+;--------------------------------------------------------------------
+;Função: Escreve o valor de AX na tela
+;		printf("%
+;--------------------------------------------------------------------
+printf_w	proc	near
+	; sprintf_w(AX, BufferWRWORD)
+	lea		bx,BufferWRWORD
+	call	sprintf_w
+	
+	; printf_s(BufferWRWORD)
+	lea		bx,BufferWRWORD
+	call	printf_s
+	
+	ret
+printf_w	endp
+
+;--------------------------------------------------------------------
+;Função: Converte um inteiro (n) para (string)
+;		 sprintf(string->BX, "%d", n->AX)
+;--------------------------------------------------------------------
+sprintf_w	proc	near
+	mov		sw_n,ax
+	mov		cx,5
+	mov		sw_m,10000
+	mov		sw_f,0
+	
+sw_do:
+	mov		dx,0
+	mov		ax,sw_n
+	div		sw_m
+	
+	cmp		al,0
+	jne		sw_store
+	cmp		sw_f,0
+	je		sw_continue
+sw_store:
+	add		al,'0'
+	mov		[bx],al
+	inc		bx
+	
+	mov		sw_f,1
+sw_continue:
+	
+	mov		sw_n,dx
+	
+	mov		dx,0
+	mov		ax,sw_m
+	mov		bp,10
+	div		bp
+	mov		sw_m,ax
+	
+	dec		cx
+	cmp		cx,0
+	jnz		sw_do
+
+	cmp		sw_f,0
+	jnz		sw_continua2
+	mov		[bx],'0'
+	inc		bx
+sw_continua2:
+
+	mov		byte ptr[bx],0
+	ret		
+sprintf_w	endp
 ;--------------------------------------------------------------------
 ;   Fim do programa.
 ;--------------------------------------------------------------------
