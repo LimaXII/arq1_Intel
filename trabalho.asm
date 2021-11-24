@@ -305,6 +305,47 @@ sw_continua2:
 	mov		byte ptr[bx],0
 	ret		
 sprintf_w	endp
+
+;--------------------------------------------------------------------
+;Função:Converte um ASCII-DECIMAL para HEXA
+;Entra: (S) -> DS:BX -> Ponteiro para o string de origem
+;Sai:	(A) -> AX -> Valor "Hex" resultante
+;Algoritmo:
+;	A = 0;
+;	while (*S!='\0') {
+;		A = 10 * A + (*S - '0')
+;		++S;
+;	}
+;	return
+;--------------------------------------------------------------------
+atoi	proc near
+		;A = 0;
+		mov		ax,0		
+atoi_2:
+		;while (*S!='\0') {
+		cmp		byte ptr[bx], 0
+		jz		atoi_1
+
+		;A = 10 * A
+		mov		cx,10
+		mul		cx
+
+		;A = A + *S
+		mov		ch,0
+		mov		cl,[bx]
+		add		ax,cx
+
+		;A = A - '0'
+		sub		ax,'0'
+
+		;++S
+		inc		bx		
+		;}
+		jmp		atoi_2
+atoi_1:
+		; return
+		ret
+atoi	endp
 ;--------------------------------------------------------------------
 ;   Fim do programa.
 ;--------------------------------------------------------------------
