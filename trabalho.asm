@@ -6,13 +6,18 @@ LF		equ		0ah
 
 	.data
 FileName			db		8 dup (?)		; Nome do arquivo a ser lido.
+FileType			db		".res", 0		; Tipo do arquivo.
+Count_file			dw		0				; Variável que vai guardar o fim do nome do arquivo.
 FileBuffer			db		10 dup (?)		; Buffer de leitura do arquivo.
 FileHandle			dw		0				; Handler do arquivo.
+FileHandleDst		dw		0				; Handler do arquivo de saída.
 FileNameBuffer		db		150 dup (?)		; Buffer do nome do arquivo.
 
 MsgPedeArquivo		db		"Nome do arquivo: ", 0
 MsgErroOpenFile		db		"Erro na abertura do arquivo.", CR, LF, 0
 MsgErroReadFile		db		"Erro na leitura do arquivo.", CR, LF, 0
+MsgErroCreateFile	db		"Erro na criação do arquivo.", CR, LF, 0
+MsgErroWriteFile	db		"Erro na escrita do arquivo.", CR, LF, 0
 MsgCRLF				db		CR, LF, 0
 
 backup				db		0				; Variável para realizar alguns backups.
@@ -21,6 +26,17 @@ integer				db		0				; Variável para testar se é um inteiro válido.
 frac				db		0				; Variável para testar se é um fracionário válido.
 one_integer_number	db		3 dup (?)		; Variável para guardar um número inteiro.
 one_frac_number		db		2 dup (?)		; Variável para guardar um número fracionário.
+int_sig				db		0				; Número significativo de inteiros.
+real_int_addres		dw		0				; Endereço do atual digito inteiro
+integer_flag		db		0				; Flag para a parte inteira.
+frac_sig			db		0				; Número significativo de fracionários.
+real_frac_addres	dw		0				; Endereço do atual digito fracionário.
+frac_flag			db		0				; Flag para a parte fracionária.
+
+final_int_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números inteiros.
+final_int_count		dw		0				; Variável para contar a posição do vetor de inteiros.
+final_frac_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números fracionários.
+final_frac_count	dw		0				; Variável para contar a posição do vetor de fracionários.
 
 BufferWRWORD		db		10 dup (?)			;Variável interna usada na rotina printf_w
 
@@ -35,10 +51,14 @@ sw_m				dw		0
 ;Função main
 ;--------------------------------------------------------------------	
 	;GetFileName();
-	call	GetFileName
+	call	GetFileName	
+	call	GetFileDestName
 
 	;printf ("\r\n");
 	lea		bx,MsgCRLF
+	call	printf_s
+
+	lea		bx,FileName
 	call	printf_s
 
     ;if ( (ax=fopen(ah=0x3d, dx->FileName) ) ) {
@@ -62,8 +82,28 @@ sw_m				dw		0
 
 	;FileHandle = ax
 	mov		FileHandle,ax		; Salva handle do arquivo
+	jmp		End_program
 
 	;while(1) {
+	push	cx
+	push	bx
+	mov 	cx, 100
+	mov 	bx, 0
+Set_int_vetloop:
+	mov 	final_int_number[bx], 0FFFFh
+	inc 	bx
+	loop 	Set_int_vetloop
+
+	mov 	cx, 100
+	mov 	bx, 0
+Set_frac_vetloop:
+	mov 	final_frac_number[bx], 0FFFFh
+	inc 	bx
+	loop 	Set_int_vetloop
+
+	pop		bx
+	pop     cx
+
 Again:
 	;Lê um caractere do arquivo
 	;if ( (ax=fread(ah=0x3f, bx=FileHandle, cx=1, dx=FileBuffer)) ) {
@@ -98,6 +138,9 @@ Test_side:
 	je		Continua3_frac
 	jmp		Continua3_int
 
+Again_mid_jump:
+	jmp		Again
+
 Continua3_int:
 	mov		ah, backup
 	;bl = FileBuffer[0]
@@ -115,7 +158,7 @@ Continua3_int:
 	cmp		bl, '9'
 	ja		Again
 	cmp		bl, '9'
-	jb		Found_a_Integer_Number
+	jb		Found_a_Integer_Number_mid_jump
 	jmp		Again
 
 Continua3_frac:
@@ -133,9 +176,9 @@ Continua3_frac:
 	cmp		bl, LF
 	je		New_line
 	cmp		bl, '0'
-	jb		Again
+	jb		Again_mid_jump
 	cmp		bl, '9'
-	ja		Again
+	ja		Again_mid_jump
 	cmp		bl, '9'
 	jb		Found_a_Frac_Number
 	jmp		Again
@@ -148,13 +191,57 @@ Deal_with_separator:
 	mov		ah, backup
 	jmp		Again
 
+Found_a_Integer_Number_mid_jump:
+	jmp		Found_a_Integer_Number
+
 New_line:
+	lea		bx, one_integer_number
+	call 	atoi
+	call	check_integer_number
+	lea		bx, one_frac_number
+	call	atoi
+	call	check_frac_number
+
+	cmp		integer_flag, 1h
+	je		Next_step
+	jmp		End_line
+
+Next_step:
+	cmp		frac_flag, 1h
+	je      Numbers_OK
+	jmp		End_line
+
+End_line:
+	jmp		Reset_numbers
+
+Numbers_OK:
+	push	bx
+	mov		bx, final_int_count
+	mov		final_int_count[bx], ax
+	mov		bx, final_frac_count
+	mov		final_frac_count[bx], cx
+	pop		bx
 	jmp		Reset_numbers
 
 Found_a_Integer_Number:
+	push	bx
+	mov		bx, 0
+	mov		al, bl
+	mov		bl,int_sig	
+	mov		one_integer_number[bx],al
+	inc		int_sig 
+	pop		bx
 	jmp		Again
 
 Found_a_Frac_Number:
+	push	bx
+	mov		bx, 0
+	mov		al, bl
+	mov		bl,frac_sig	
+	mov		one_frac_number[bx],al
+	inc		int_sig 
+	inc		frac_sig 
+	pop		bx
 	jmp		Again
 
 Reset_numbers:
@@ -172,14 +259,45 @@ Reset_numbers:
 	mov		ax,0
 	rep 	stosw
 
-	jmp		Again
+	mov		int_sig, 0h
+	mov		frac_sig, 0h
 
+	jmp		Again
 	
 CloseAndFinal:
 	;fclose(FileHandle->bx)
 	mov		bx,FileHandle		; Fecha o arquivo
 	mov		ah,3eh
 	int		21h
+
+Create_file:
+	lea		bx, FileName
+	call	printf_s
+	lea		dx,FileName
+	call	fcreate
+	mov		FileHandleDst,bx
+	jnc		Second_part
+	lea		bx, MsgErroCreateFile
+	call	printf_s
+
+Second_part:
+	mov		bx,FileHandleDst		;Fecha arquivo destino
+	call	fclose
+	jmp		End_program
+
+Second_part2:
+	mov		bx,FileHandleDst
+	call	setChar	
+	jnc		Second_part
+
+	;printf ("Erro na escrita....;)")
+	;fclose(FileHandleSrc)
+	;fclose(FileHandleDst)
+	;exit(1)
+	lea		bx, MsgErroWriteFile
+	call	printf_s	
+	mov		bx,FileHandleDst		;Fecha arquivo destino
+	call	fclose
 
 End_program:
 	.exit
@@ -214,10 +332,64 @@ GetFileName	proc	near
 
 	;	// Coloca o '\0' no final do string
 	;	*d = '\0';
+	mov		Count_file, di
 	mov		byte ptr es:[di],0
 	ret
 
 GetFileName	endp
+
+;--------------------------------------------------------------------
+;   Cria o nome do arquivo destino.
+;--------------------------------------------------------------------
+GetFileDestName proc	near
+	lea		di, FileName
+	mov		cx, 8
+	cld						;Limpa o Direction Flag
+	mov 	al,2eh
+	repne	scasb	
+	jne		Put_extension
+	jmp		Put_extension2
+
+Put_extension:
+	mov 	di,	Count_file
+	lea		si, FileType
+	mov		cx, 5
+	rep		movsb
+
+	lea		bx,MsgCRLF
+	call	printf_s
+
+	lea		bx,FileName
+	call	printf_s
+
+Put_extension2:
+	mov		cx, 4
+	mov		bx, 0
+Loop_ext:
+	cmp		FileName[bx], 2eh
+	je		Put_extension3
+	inc		bx
+	loop	Loop_ext
+	jmp		End_GetExtension
+
+Put_extension3:
+	inc		bx
+	inc		bx
+	mov		FileName[bx], 72h
+	inc		bx
+	mov		FileName[bx], 65h
+	inc		bx
+	mov		FileName[bx], 73h
+
+	lea		bx,MsgCRLF
+	call	printf_s
+
+	lea		bx,FileName
+	call	printf_s
+
+End_GetExtension:
+	ret
+GetFileDestName  endp
 
 ;--------------------------------------------------------------------
 ;	Função que escreve uma string na tela.
@@ -319,33 +491,105 @@ sprintf_w	endp
 ;	return
 ;--------------------------------------------------------------------
 atoi	proc near
-		;A = 0;
-		mov		ax,0		
+	;A = 0;
+	mov		ax,0		
 atoi_2:
-		;while (*S!='\0') {
-		cmp		byte ptr[bx], 0
-		jz		atoi_1
-
-		;A = 10 * A
-		mov		cx,10
-		mul		cx
-
-		;A = A + *S
-		mov		ch,0
-		mov		cl,[bx]
-		add		ax,cx
-
-		;A = A - '0'
-		sub		ax,'0'
-
-		;++S
-		inc		bx		
-		;}
-		jmp		atoi_2
+	;while (*S!='\0') {
+	cmp		byte ptr[bx], 0
+	jz		atoi_1
+	;A = 10 * A
+	mov		cx,10
+	mul		cx
+	;A = A + *S
+	mov		ch,0
+	mov		cl,[bx]
+	add		ax,cx
+	;A = A - '0'
+	sub		ax,'0'
+	;++S
+	inc		bx	
+	;}
+	jmp		atoi_2
 atoi_1:
-		; return
-		ret
+	; return
+	ret
 atoi	endp
+;--------------------------------------------------------------------
+;Função:Checa se o número inteiro recebido é válido.
+;Entra: (S) -> DS:AX -> Número inteiro
+;Sai:	(A) -> DS:AX -> Número inteiro
+;Seta a flag de inteiro como válida.
+;--------------------------------------------------------------------
+check_integer_number	proc near
+checking_integer:
+	cmp 	ax, 0h
+	jb		invalid_integer
+	cmp		ax, 1F3h
+	ja		invalid_integer
+	mov		integer_flag, 1h
+
+invalid_integer:
+	mov		integer_flag, 0h
+
+check_integer_number endp
+
+;--------------------------------------------------------------------
+;Função:Checa se o número fracionário recebido é válido.
+;Entra: (S) -> DS:AX -> Número fracionário
+;Sai:	(A) -> DS:CX -> Número fracionário
+;Seta a flag de fracionário como válida.
+;--------------------------------------------------------------------
+check_frac_number	proc near
+checking_frac:
+	mov		cx,ax
+	cmp 	cx, 0h
+	jb		invalid_frac
+	cmp		cx, 63h
+	ja		invalid_frac
+	mov		frac_flag, 1h
+
+invalid_frac:
+	mov		frac_flag, 0h	
+
+check_frac_number endp
+
+;--------------------------------------------------------------------
+;Função Cria o arquivo cujo nome está no string apontado por DX
+;		boolean fcreate(char *FileName -> DX)
+;Sai:   BX -> handle do arquivo
+;       CF -> 0, se OK
+;--------------------------------------------------------------------
+fcreate	proc	near
+	mov		cx,0
+	mov		ah,3ch
+	int		21h
+	mov		bx,ax
+	ret
+
+fcreate	endp
+;--------------------------------------------------------------------
+;Entra:	BX -> file handle
+;Sai:	CF -> "0" se OK
+;--------------------------------------------------------------------
+fclose	proc	near
+	mov		ah,3eh
+	int		21h
+	ret
+fclose	endp
+;--------------------------------------------------------------------
+;Entra: BX -> file handle
+;       dl -> caractere
+;Sai:   AX -> numero de caracteres escritos
+;		CF -> "0" se escrita ok
+;--------------------------------------------------------------------
+setChar	proc	near
+	mov		ah,40h
+	mov		cx,1
+	mov		FileBuffer,dl
+	lea		dx,FileBuffer
+	int		21h
+	ret
+setChar	endp	
 ;--------------------------------------------------------------------
 ;   Fim do programa.
 ;--------------------------------------------------------------------
