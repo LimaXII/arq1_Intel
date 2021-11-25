@@ -19,6 +19,7 @@ MsgErroOpenFile		db		"Erro na abertura do arquivo.", CR, LF, 0
 MsgErroReadFile		db		"Erro na leitura do arquivo.", CR, LF, 0
 MsgErroCreateFile	db		"Erro na criação do arquivo.", CR, LF, 0
 MsgErroWriteFile	db		"Erro na escrita do arquivo.", CR, LF, 0
+depurate			db		"Ate aqui, ok.", CR, LF, 0					; String usada para depurar o código.
 MsgCRLF				db		CR, LF, 0
 
 backup				db		0				; Variável para realizar alguns backups.
@@ -27,10 +28,10 @@ integer				db		0				; Variável para testar se é um inteiro válido.
 frac				db		0				; Variável para testar se é um fracionário válido.
 one_integer_number	db		3 dup (?)		; Variável para guardar um número inteiro.
 one_frac_number		db		2 dup (?)		; Variável para guardar um número fracionário.
-int_sig				db		3				; Número significativo de inteiros.
+int_sig				dw		0				; Número significativo de inteiros.
 real_int_addres		dw		0				; Endereço do atual digito inteiro
 integer_flag		db		0				; Flag para a parte inteira.
-frac_sig			db		2				; Número significativo de fracionários.
+frac_sig			dw		0				; Número significativo de fracionários.
 real_frac_addres	dw		0				; Endereço do atual digito fracionário.
 frac_flag			db		0				; Flag para a parte fracionária.
 
@@ -81,6 +82,19 @@ Continua1:
 	;FileHandle = ax
 	mov		FileHandle,ax	; Salva handle do arquivo
 
+	;Cria o arquivo de saída
+	call	GetFileDestName				; Chama a função para colocar .res no nome do arquivo.
+	lea		bx, FileName				; Printa o nome do arquivo, só pra ver se ta certo (REMOVE ISSO DEPOIS)
+	call	printf_s					; (REMOVE ISSO DEPOIS)
+	lea		dx,FileName					; dx = FileName.res
+	call	fcreate						; Chama a função que cria o arquivo.
+	mov		FileHandleDst,bx			; Salva o FileHandle.
+	jnc		Continue_to_backup			; Vai para a segunda parte do programa.
+	lea		bx, MsgErroCreateFile		; Caso o arquivo não tenha conseguido ser criado.
+	call	printf_s					; Informa o erro na tela.
+	jmp		End_program					; Finaliza o programa.
+
+Continue_to_backup:
 	; Backup na pilha.
 	push	cx
 	push	bx
@@ -93,13 +107,14 @@ Set_int_vetloop:
 	inc 	bx
 	loop 	Set_int_vetloop
 
+
 	mov 	cx, 100
 	mov 	bx, 0
 	; Seta o vetor de fracionários como FFFFh.
 Set_frac_vetloop:
 	mov 	final_frac_number[bx], 0FFFFh
 	inc 	bx
-	loop 	Set_int_vetloop
+	loop 	Set_frac_vetloop
 	
 	; Retira o backup da pilha.
 	pop		bx
@@ -151,13 +166,15 @@ Again_mid_jump:
 	jmp		Again
 
 	; Lida com a parte inteira.
-Continua3_int:
+Continua3_int:	; (ERRORRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR)
+	lea		bx,depurate ;DEPURATING
+	call	printf_s
 	;bl = FileBuffer[x]
 	mov		bl,FileBuffer		; Pega o caractere lido do arquivo. 
 	cmp		bl, CR				; Testa se o caractere é um Carriage Return.	
-	je		New_line			; Se for, a linha terminou.
+	je		Write_in_dest		; Se for, a linha terminou.
 	cmp		bl, LF				; Testa se o caractere é um Line Feed.
-	je		New_line			; Se for, a linha terminou.
+	je		Write_in_dest		; Se for, a linha terminou.
 	cmp		bl, 2Eh				; Testa se o caractere é um '.'.
 	je		Deal_with_separator	; Se for, lida com ele.
 	cmp		bl, 2Ch				; Testa se o caractere é um ','.
@@ -178,9 +195,9 @@ Continua3_frac:
 	;bl = FileBuffer[0]
 	mov		bl,FileBuffer		; Pega o caractere lido do arquivo. 
 	cmp		bl, CR				; Testa se o caractere é um Carriage Return.
-	je		New_line			; Se for, a linha terminou.
+	je		Write_in_dest		; Se for, a linha terminou.
 	cmp		bl, LF				; Testa se o caractere é um Line Feed.
-	je		New_line			; Se for, a linha terminou.
+	je		Write_in_dest		; Se for, a linha terminou.
 	cmp		bl, 0h				; Testa se é algo menor que o número 0h.
 	jb		Again_mid_jump		; Se for, é um caractere inválido.
 	cmp		bl, 9h				; Testa se é algo maior que o número 9h.
@@ -199,12 +216,16 @@ Deal_with_separator:
 Found_a_Integer_Number_mid_jump:
 	jmp		Found_a_Integer_Number
 
+Write_in_dest:
+	;!!!!!!!!!!!!!
+
 	; Caso tenha encontrado um CR (Carriage Return) ou LF (Line Feed).
-New_line:
-	lea		bx, one_integer_number		; FIX! []?
+New_line2:
+	call	write_char					; Escreve uma linha no arquivo de saída.
+	lea		bx, one_integer_number		; Transforma o número lido em HEX
 	call 	atoi						; Chama a função atoi para transformar os chars para int.
 	call	check_integer_number		; Chega se o número inteiro recebido está dentro do padrão estabelecido.
-	lea		bx, one_frac_number			; FIX! []?
+	lea		bx, one_frac_number			; Transforma o número lido em HEX
 	call	atoi						; Chama a função atoi para transformar os chars para int.
 	call	check_frac_number			; Chega se o número fracionário recebido está dentro do padrão estabelecido.
 
@@ -226,30 +247,30 @@ Numbers_OK:
 	push	bx							; Salva bx na pilha.
 	mov		bx, final_int_count			; bx recebe a última posição registrada no vetor dos inteiros.
 	mov		final_int_count[bx], ax		; Coloca o número na determinada posição do vetor.
+	inc		final_int_count				; Incrementa a variável da posição do vetor.
 	mov		bx, final_frac_count		; bx recebe a última posição registrada no vetor dos fracionários.
 	mov		final_frac_count[bx], cx	; Coloca o número na determinada posição do vetor.
+	inc		final_frac_count			; Incrementa a variável da posição do vetor.
 	pop		bx							; Recupera o backup de bx.
 	jmp		Reset_numbers				; Reseta os números. Para depois ir para a próxima linha.
 
 	; Caso tenha encontrado um número inteiro na linha.
 Found_a_Integer_Number:
 	push	bx							; Salva bx na pilha.
-	mov		bx, 0						; bx = 0.
-	mov		al, bl						; al = 0? FIX!
-	mov		bl,int_sig					; bl = Qual é o número significativo dos inteiros.
-	mov		one_integer_number[bx],al	; Ta colocando 0 na posição do vetor! FIXX!!
-	dec		int_sig 					; Decrementa o número significativo.
+	mov		al, bl						; al = o número lido
+	mov		bx,int_sig					; bl = Qual é o número significativo dos inteiros.
+	mov		one_integer_number[bx],al	; Coloca o número lido na sua determinada posição.
+	inc		int_sig 					; Incrementa o número significativo.
 	pop		bx							; Recupera o backup de bx.
 	jmp		Again						; Busca o próximo caractere.
 
 	; Caso tenha encontrado um número fracionário na linha.
 Found_a_Frac_Number:
 	push	bx							; Salva bx na pilha.
-	mov		bx, 0						; bx = 0. Não poderia ser BL? FIX!
-	mov		al, bl						; al = 0? FIX!
-	mov		bl,frac_sig					; bl = Qual é o número significativo dos inteiros.
-	mov		one_frac_number[bx],al		; Ta colocando 0 na posição do vetor! FIXX!!			
-	dec		frac_sig 					; Decrementa o número significativo.
+	mov		al, bl						; al = o número lido
+	mov		bx,frac_sig					; bl = Qual é o número significativo dos inteiros.
+	mov		one_frac_number[bx],al		; Coloca o número lido na sua determinada posição.			
+	inc		frac_sig 					; Incrementa o número significativo.
 	pop		bx							; Recupera o backup de bx.
 	jmp		Again						; Busca o próximo caractere.
 
@@ -258,20 +279,22 @@ Reset_numbers:
 	;for (i=0; i<3; ++i)
 	;	one_integer_number[i] = 0
 	lea		di,one_integer_number
-	mov		cx,3
+	mov		cx,0
 	mov		ax,0
 	rep 	stosw
 
 	;for (i=0; i<2; ++i)
 	;	one_frac_number[i] = 0
 	lea		di,one_frac_number
-	mov		cx,2
+	mov		cx,0
 	mov		ax,0
 	rep 	stosw
 
 	; Reseta as flags.
-	mov		int_sig, 3h			
-	mov		frac_sig, 2h
+	mov		integer_flag, 0h
+	mov		frac_flag, 0h
+	mov		int_sig, 0h			
+	mov		frac_sig, 0h
 
 	; Procura o próximo caractere.
 	jmp		Again
@@ -281,29 +304,7 @@ CloseAndFinal:
 	;fclose(FileHandle->bx)
 	mov		bx,FileHandle		; Fecha o arquivo
 	call	fclose				; Chama a função que fecha arquivos.
-
-	; Cria o arquivo de SAÍDA.
-Create_file:
-	call	GetFileDestName				; Chama a função para colocar .res no nome do arquivo.
-	lea		bx, FileName				; Printa o nome do arquivo, só pra ver se ta certo (REMOVE ISSO DEPOIS)
-	call	printf_s					; (REMOVE ISSO DEPOIS)
-	lea		dx,FileName					; dx = FileName.res
-	call	fcreate						; Chama a função que cria o arquivo.
-	mov		FileHandleDst,bx			; Salva o FileHandle.
-	jnc		Second_part					; Vai para a segunda parte do programa.
-	lea		bx, MsgErroCreateFile		; Caso o arquivo não tenha conseguido ser criado.
-	call	printf_s					; Informa o erro na tela.
-
-	; Segunda parte do programa (Arquivo de saída)!
-Second_part:
-	mov		bx,FileHandleDst			; Move o FileHandle para bx.
-	call	setChar						; Chama a função que insere um char no arquivo.
-	jnc		Second_part					; idk. FIX!
-
-	lea		bx, MsgErroWriteFile		; Caso ocorra erro na escrita do char.
-	call	printf_s					; Informa na tela.
-	mov		bx,FileHandleDst			; Fecha arquivo destino.
-	call	fclose						; Chama a função que fecha arquivos.
+	jmp		End_program
 
 	; Finaliza o programa.
 End_program:
@@ -584,6 +585,15 @@ setChar	proc	near
 	int		21h
 	ret
 setChar	endp	
+
+;--------------------------------------------------------------------
+; Escreve no arquivo de saída.;
+; ENTRADA: Bx -> FileHandle
+;--------------------------------------------------------------------
+write_char	proc	near
+
+
+write_char endp
 ;--------------------------------------------------------------------
 ;   Fim do programa.
 ;--------------------------------------------------------------------
