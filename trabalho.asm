@@ -29,17 +29,16 @@ frac				db		0				; Variável para testar se é um fracionário válido.
 one_integer_number	db		3 dup (?)		; Variável para guardar um número inteiro.
 one_frac_number		db		2 dup (?)		; Variável para guardar um número fracionário.
 int_sig				dw		0				; Número significativo de inteiros.
-real_int_addres		dw		0				; Endereço do atual digito inteiro
 integer_flag		db		0				; Flag para a parte inteira.
 frac_sig			dw		0				; Número significativo de fracionários.
-real_frac_addres	dw		0				; Endereço do atual digito fracionário.
 frac_flag			db		0				; Flag para a parte fracionária.
 
 final_int_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números inteiros.
 final_int_count		dw		0				; Variável para contar a posição do vetor de inteiros.
-final_write_int_count	dw	0				; Variável para contar a posição do vetor de inteiros para a escrita.
+count_write_int		dw		0	
 final_frac_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números fracionários.
 final_frac_count	dw		0				; Variável para contar a posição do vetor de fracionários.
+count_write_frac	dw		0
 
 Nothing				db		100 dup (?)		; Algo ta consumindo essa variável...
 write_count			dw		1 				; Variável utilizada para contar no programa de saída.
@@ -94,36 +93,10 @@ Continua1:
 	lea		dx,FileName					; dx = FileName.res
 	call	fcreate						; Chama a função que cria o arquivo.
 	mov		FileHandleDst,bx			; Salva o FileHandle.
-	jnc		Continue_to_backup			; Vai para a segunda parte do programa.
+	jnc		Again						; Vai para a segunda parte do programa.
 	lea		bx, MsgErroCreateFile		; Caso o arquivo não tenha conseguido ser criado.
 	call	printf_s					; Informa o erro na tela.
 	jmp		End_program					; Finaliza o programa.
-
-Continue_to_backup:
-	; Backup na pilha.
-	push	cx
-	push	bx
-
-	mov 	cx, 100
-	mov 	bx, 0
-	; Seta o vetor de inteiros como 0h.
-Set_int_vetloop:
-	mov 	final_int_number[bx], 0h
-	inc 	bx
-	loop 	Set_int_vetloop
-
-
-	mov 	cx, 100
-	mov 	bx, 0
-	; Seta o vetor de fracionários como 0h.
-Set_frac_vetloop:
-	mov 	final_frac_number[bx], 0h
-	inc 	bx
-	loop 	Set_frac_vetloop
-	
-	; Retira o backup da pilha.
-	pop		bx
-	pop     cx
 
 Again:
 	;Lê um caractere do arquivo
@@ -147,6 +120,8 @@ Again:
 	; Fecha tudo.
 	jmp		CloseAndFinal
 
+
+	; Verifica se chegou no final do arquivo.
 Continua2:
 	;if (ax==0)	fclose(bx=FileHandle);
 	; Se ax == 0, significa que nenhum byte foi lido.
@@ -182,7 +157,11 @@ Continua3_int:
 	je		Deal_with_separator	; Se for, lida com ele.
 	cmp		bl, 2Ch				; Testa se o caractere é um ','.
 	je		Deal_with_separator	; Se for, lida com ele.
-	cmp		bl, 'A'				; Testa se é algo menor que 9h.
+	cmp		bl, 30h				; Testa se é algo menor que 9h.
+	jb		Again				; Busca o próximo caractere.
+	cmp		bl, 39h				; Testa se é algo menor que 9h.
+	ja		Again				; Busca o próximo caractere.
+	cmp		bl, 39h				; Testa se é algo menor que 9h.
 	jb		Found_a_Integer_Number_mid_jump		; Se for, lida com o número lido.
 	jmp		Again				; Senão, busca o próximo caractere.
 
@@ -194,7 +173,11 @@ Continua3_frac:
 	je		New_line			; Se for, a linha terminou.
 	cmp		bl, LF				; Testa se o caractere é um Line Feed.
 	je		New_line			; Se for, a linha terminou.	
-	cmp		bl, 'A'				; Testa se é algo menor que 9h.
+	cmp		bl, 30h				; Testa se é algo menor que 9h.
+	jb		Again				; Busca o próximo caractere.
+	cmp		bl, 39h				; Testa se é algo menor que 9h.
+	ja		Again				; Busca o próximo caractere.
+	cmp		bl, 39h				; Testa se é algo menor que 9h.
 	jb		Found_a_Frac_Number	; Se for, lida com o número lido.
 	jmp		Again_mid_jump		; Senão, busca o próximo caractere.
 
@@ -317,14 +300,65 @@ Continue_write:
 	mov		dl, ' '
 	call	setChar
 
+	; Escreve a parte inteira.
+	; Primeiro dígito.
+	mov		bx, count_write_int
+	mov		dl, one_integer_number[bx]
+	mov		bx, FileHandleDst
+	call	setChar
+
+	inc		count_write_int
+	; Segundo Dígito.
+	mov		bx, count_write_int
+	mov		dl, one_integer_number[bx]
+	mov		bx, FileHandleDst
+	call	setChar
+
+	inc		count_write_int
+	; Terceiro Dígito.
+	mov		bx, count_write_int
+	mov		dl, one_integer_number[bx]
+	mov		bx, FileHandleDst
+	call	setChar
+
+	; Virgula
+	mov		dl, ','
+	call	setChar
+
+	; Escreve a parte fracionária.
+	; Primeiro dígito.
+	mov		bx, count_write_frac
+	mov		dl, one_frac_number[bx]
+	mov		bx, FileHandleDst
+	call	setChar
+
+	inc	count_write_frac
+	; Segundo dígito.
+	mov		bx, count_write_frac
+	mov		dl, one_frac_number[bx]
+	mov		bx, FileHandleDst
+	call	setChar
+
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+
+	; Escreve '-'
+	mov		dl, '-'
+	call	setChar
+
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+
+
+
 	; Escreve 'CR LF'
 	mov		dl, CR
 	call	setChar
 	mov		dl, LF
 	call	setChar
 	jmp		Reset_numbers				; Reseta os números. Para depois ir para a próxima linha.
-
-
 
 	; Reseta as variáveis.
 Reset_numbers:
@@ -347,11 +381,14 @@ Reset_numbers:
 	mov		frac_flag, 0h
 	mov		int_sig, 0h			
 	mov		frac_sig, 0h
+	mov		count_write_int, 0h
+	mov		count_write_frac, 0h
 
 	; Procura o próximo caractere.
 	jmp		Again
 	
 Continue_write2:
+	mov		bx, FileHandleDst			; BX = FileHandleDst.
 	; Escreve 'Soma:'
 	mov		dl, 'S'
 	call	setChar
@@ -388,8 +425,6 @@ Continue_write2:
 
 	; Fecha o arquivo de ENTRADA.
 CloseAndFinal:
-
-
 	;fclose(FileHandle->bx)
 	mov		bx,FileHandle		; Fecha o arquivo de entrada.
 	call	fclose				; Chama a função que fecha arquivos.
