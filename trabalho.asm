@@ -22,16 +22,14 @@ MsgErroWriteFile	db		"Erro na escrita do arquivo.", CR, LF, 0
 depurate			db		"Ate aqui, ok.", CR, LF, 0					; String usada para depurar o código.
 MsgCRLF				db		CR, LF, 0
 
-backup				db		0				; Variável para realizar alguns backups.
+invalid_input_flag	db		0				; Variável caso algum número tenha sido escrito com uma casa decimal a mais.
 flag				db		0				; Variável para testar algumas flags de jump.
 integer				db		0				; Variável para testar se é um inteiro válido.
 frac				db		0				; Variável para testar se é um fracionário válido.
 one_integer_number	db		3 dup (0h)		; Variável para guardar um número inteiro.
 one_frac_number		db		2 dup (0h)		; Variável para guardar um número fracionário.
 int_sig				dw		0				; Número significativo de inteiros.
-integer_flag		db		0				; Flag para a parte inteira.
 frac_sig			dw		0				; Número significativo de fracionários.
-frac_flag			db		0				; Flag para a parte fracionária.
 
 final_int_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números inteiros.
 final_int_count		dw		0				; Variável para contar a posição do vetor de inteiros.
@@ -39,12 +37,17 @@ count_write_int		dw		0
 final_frac_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números fracionários.
 final_frac_count	dw		0				; Variável para contar a posição do vetor de fracionários.
 count_write_frac	dw		0
+a_int_number		dw		0				; Um número inteiro final.
+a_frac_number		dw		0				; Um número fracionário final.
 
 Nothing				db		100 dup (?)		; Algo ta consumindo essa variável...
 write_count			dw		1 				; Variável utilizada para contar no programa de saída.
 write_count2		dw		0 				; Variável utilizada para contar no programa de saída.
 write_count3		dw		0 				; Variável utilizada para contar no programa de saída.
 string_convet		db		0 				; String convertida.
+tst					db		0h				; Contador para usar na atoi.
+
+soy_una				dw		0
 
 BufferWRWORD		db		10 dup (?)			;Variável interna usada na rotina printf_w
 
@@ -151,9 +154,9 @@ Continua3_int:
 	mov		bh, 0h
 	mov		bl,FileBuffer		; Pega o caractere lido do arquivo. 
 	cmp		bl, CR				; Testa se o caractere é um Carriage Return.
-	je		New_line			; Se for, a linha terminou.
+	je		Again				; Se for, a linha terminou.
 	cmp		bl, LF				; Testa se o caractere é um Line Feed.
-	je		New_line			; Se for, a linha terminou.
+	je		Again				; Se for, a linha terminou.
 	cmp		bl, 2Eh				; Testa se o caractere é um '.'.
 	je		Deal_with_separator	; Se for, lida com ele.
 	cmp		bl, 2Ch				; Testa se o caractere é um ','.
@@ -185,7 +188,7 @@ Continua3_frac:
 	jb		Found_a_Frac_Number	; Se for, lida com o número lido.
 	cmp		bl, 39h				; Testa se é algo menor que 9h.
 	je		Found_a_Frac_Number	; Se for, lida com o número lido.
-	jmp		Again_mid_jump		; Senão, busca o próximo caractere.
+	jmp		Again				; Senão, busca o próximo caractere.
 
 Deal_with_separator:
 	; Coloca 1 para a flag.
@@ -199,18 +202,46 @@ Found_a_Integer_Number_mid_jump:
 
 	; Caso tenha encontrado um CR (Carriage Return) ou LF (Line Feed).
 New_line:
-	lea		bx, one_integer_number		; Transforma o número lido em HEX
-	call 	atoi						; Chama a função atoi para transformar os chars para int.
+	cmp		invalid_input_flag, 0h
+	ja		Change_BX
+	mov		tst, 0h
+	lea		bx, one_integer_number[0]	; Transforma o número lido em HEX
+	call 	atoi_integer				; Chama a função atoi para transformar os chars para int.
 	call	check_integer_number		; Chega se o número inteiro recebido está dentro do padrão estabelecido.
-	lea		bx, one_frac_number			; Transforma o número lido em HEX
-	call	atoi						; Chama a função atoi para transformar os chars para int.
-	call	check_frac_number			; Chega se o número fracionário recebido está dentro do padrão estabelecido.
-	cmp		integer_flag, 1h			; Se o número não for válido. Vai para a próxima linha.
-	je		Next_step					; Se for válido. Chega a validade do número fracionário.
-	jmp		End_line					; Termina de ler a linha.
+	jmp 	Continue_Step1
+
+Change_BX:			
+	mov		bx, 46h
+
+Continue_Step1:
+	; Remove depois, testa a flag
+	mov		soy_una, bx
+	lea		bx, soy_una
+	call 	printf_s
+	; ----------------------------
+	;printf ("\r\n");
+	lea		bx,MsgCRLF
+	call	printf_s
+	
+	cmp		soy_una, 44h
+	je		Next_step
+	jmp		End_line					; Termina de ler a linha.	
 
 Next_step:
-	cmp		frac_flag, 1h				; Se o número não for válido. Vai para a próxima linha.
+	cmp		invalid_input_flag, 0h
+	ja		Change_BX2
+	mov		tst, 0h
+	lea		bx, one_frac_number			; Transforma o número lido em HEX
+	call	atoi_frac					; Chama a função atoi para transformar os chars para int.
+	call	check_frac_number			; Chega se o número fracionário recebido está dentro do padrão estabelecido.
+	jmp 	Continue_Step2
+
+Change_BX2:
+	mov		bx, 46h
+	
+Continue_Step2:
+
+	cmp		bx, 44h	
 	je      Numbers_OK					; Se for válido, insere eles nos vetores.	
 	jmp		End_line					; Termina de ler a linha.
 
@@ -220,18 +251,20 @@ End_line:
 
 	; Caso os números estejam de acordo com o pedido.
 Numbers_OK:
-	push	bx							; Salva bx na pilha.
 	mov		bx, final_int_count			; bx recebe a última posição registrada no vetor dos inteiros.
+	mov		ax, a_int_number			; ax recebe o número inteiro.
 	mov		final_int_number[bx], ax	; Coloca o número na determinada posição do vetor.
 	inc		final_int_count				; Incrementa a variável da posição do vetor.
 	mov		bx, final_frac_count		; bx recebe a última posição registrada no vetor dos fracionários.
-	mov		final_frac_number[bx], cx	; Coloca o número na determinada posição do vetor.
+	mov		ax, a_frac_number			; ax recebe o número fracionário.
+	mov		final_frac_number[bx], ax	; Coloca o número na determinada posição do vetor.
 	inc		final_frac_count			; Incrementa a variável da posição do vetor.
-	pop		bx							; Recupera o backup de bx.
 	jmp		Write_in_dest				; Escreve no arquivo de saída, a linha lida.
 
 	; Caso tenha encontrado um número inteiro na linha.
 Found_a_Integer_Number:
+	cmp		int_sig, 2h
+	ja		Invalid_input
 	mov		ah, 0
 	mov		al, bl						; al = o número lido
 	mov		bx,int_sig					; bx = Qual é o número significativo dos inteiros.
@@ -241,12 +274,18 @@ Found_a_Integer_Number:
 
 	; Caso tenha encontrado um número fracionário na linha.
 Found_a_Frac_Number:
+	cmp		frac_sig, 1h
+	ja		Invalid_input
 	mov		ah, 0
 	mov		al, bl						; al = o número lido
 	mov		bx,frac_sig					; bl = Qual é o número significativo dos inteiros.
 	mov		one_frac_number[bx],al		; Coloca o número lido na sua determinada posição.			
 	inc		frac_sig 					; Incrementa o número significativo.
-	jmp		Again						; Busca o próximo caractere.	
+	jmp		Again						; Busca o próximo caractere.
+
+Invalid_input:
+	mov		invalid_input_flag, 30h
+	jmp		Again
 
 Write_in_dest:
 	; Converte o número de contagem para string	
@@ -392,15 +431,15 @@ Reset_numbers:
 	mov		one_integer_number[2], 0h		
 	mov		one_frac_number[0], 0h
 	mov		one_frac_number[1], 0h
+	mov		invalid_input_flag, 0h
 
 	; Reseta as flags.
-	mov		integer_flag, 0
-	mov		frac_flag, 0
 	mov		int_sig, 0			
 	mov		frac_sig, 0
 	mov		count_write_int, 0
 	mov		count_write_frac, 0
-	mov		flag, 0
+	mov		flag, 0h
+	mov		tst, 0h
 
 	; Procura o próximo caractere.
 	jmp		Again
@@ -629,13 +668,13 @@ sprintf_w	endp
 ;	}
 ;	return
 ;--------------------------------------------------------------------
-atoi	proc near
+atoi_integer	proc near
 	;A = 0;
 	mov		ax,0		
-atoi_2:
+atoi_integer2:
 	;while (*S!='\0') {
 	cmp		byte ptr[bx], 0
-	jz		atoi_1
+	jz		atoi_integer1
 	;A = 10 * A
 	mov		cx,10
 	mul		cx
@@ -646,13 +685,71 @@ atoi_2:
 	;A = A - '0'
 	sub		ax,'0'
 	;++S
-	inc		bx	
+	inc		tst
+	cmp		tst, 1h
+	je		inc_int_1
+	cmp		tst, 2h
+	je		inc_int_2	
+	ja		atoi_integer1
 	;}
-	jmp		atoi_2
-atoi_1:
+	jmp		atoi_integer2
+atoi_integer1:
 	; return
 	ret
-atoi	endp
+
+inc_int_1:
+	lea		bx, one_integer_number[1]
+	jmp		atoi_integer2
+inc_int_2:
+	lea		bx, one_integer_number[2]
+	jmp		atoi_integer2
+
+atoi_integer	endp
+
+;--------------------------------------------------------------------
+;Função:Converte um ASCII-DECIMAL para HEXA
+;Entra: (S) -> DS:BX -> Ponteiro para o string de origem
+;Sai:	(A) -> AX -> Valor "Hex" resultante
+;Algoritmo:
+;	A = 0;
+;	while (*S!='\0') {
+;		A = 10 * A + (*S - '0')
+;		++S;
+;	}
+;	return
+;--------------------------------------------------------------------
+atoi_frac	proc near
+	;A = 0;
+	mov		ax,0		
+atoi_frac2:
+	;while (*S!='\0') {
+	cmp		byte ptr[bx], 0
+	jz		atoi_frac1
+	;A = 10 * A
+	mov		cx,10
+	mul		cx
+	;A = A + *S
+	mov		ch,0
+	mov		cl,[bx]
+	add		ax,cx
+	;A = A - '0'
+	sub		ax,'0'
+	;++S
+	inc		tst
+	cmp		tst, 1h
+	je		inc_frac_1
+	ja		atoi_frac1	
+	;}
+	jmp		atoi_frac2
+atoi_frac1:
+	; return
+	ret
+
+inc_frac_1:
+	lea		bx, one_frac_number[1]
+	jmp		atoi_frac2
+
+atoi_frac	endp
 ;--------------------------------------------------------------------
 ;Função:Checa se o número inteiro recebido é válido.
 ;Entra: (S) -> DS:AX -> Número inteiro
@@ -662,18 +759,19 @@ atoi	endp
 check_integer_number	proc near
 checking_integer:
 
-	cmp 	ax, 0h
+	cmp 	ax, 0
 	jb		invalid_integer
-	cmp		ax, 1F3h
+	cmp		ax, 499
 	ja		invalid_integer
-	mov		integer_flag, 1h
+	mov		bx, 44h
+	mov		a_int_number, ax
 
 Return_from_check_int:
 	ret
 
 invalid_integer:
-	mov		integer_flag, 0
-	ret
+	mov		bx, 46h
+	jmp     Return_from_check_int
 
 check_integer_number endp
 
@@ -685,19 +783,19 @@ check_integer_number endp
 ;--------------------------------------------------------------------
 check_frac_number	proc near
 checking_frac:
-	mov		cx, ax
-	cmp 	cx, 0h
+	cmp 	ax, 0
 	jb		invalid_frac
-	cmp		cx, 63h
+	cmp		ax, 99
 	ja		invalid_frac
-	mov		frac_flag, 1h
+	mov		bx, 44h
+	mov		a_frac_number, ax
 
 Return_from_check_frac:
 	ret
 
 invalid_frac:
-	mov		frac_flag, 0h	
-	ret
+	mov		bx, 46h
+	jmp		Return_from_check_frac
 
 check_frac_number endp
 
