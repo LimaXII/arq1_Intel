@@ -26,8 +26,8 @@ backup				db		0				; Variável para realizar alguns backups.
 flag				db		0				; Variável para testar algumas flags de jump.
 integer				db		0				; Variável para testar se é um inteiro válido.
 frac				db		0				; Variável para testar se é um fracionário válido.
-one_integer_number	db		3 dup (?)		; Variável para guardar um número inteiro.
-one_frac_number		db		2 dup (?)		; Variável para guardar um número fracionário.
+one_integer_number	db		3 dup (0h)		; Variável para guardar um número inteiro.
+one_frac_number		db		2 dup (0h)		; Variável para guardar um número fracionário.
 int_sig				dw		0				; Número significativo de inteiros.
 integer_flag		db		0				; Flag para a parte inteira.
 frac_sig			dw		0				; Número significativo de fracionários.
@@ -246,7 +246,6 @@ Found_a_Frac_Number:
 
 Write_in_dest:
 	; Converte o número de contagem para string	
-
 	; Escreve o índice no arquivo.	
 	mov		ax,write_count3
 	lea		bx,string_convet
@@ -301,44 +300,68 @@ Continue_write:
 	call	setChar
 
 	; Escreve a parte inteira.
+First_int_number:
 	; Primeiro dígito.
 	mov		bx, count_write_int
-	mov		dl, one_integer_number[bx]
+	inc		count_write_int
+	mov		al, one_integer_number[bx]
+	cmp		al, 0h
+	je		Second_int_number
+	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
 
-	inc		count_write_int
+Second_int_number:	
 	; Segundo Dígito.
 	mov		bx, count_write_int
-	mov		dl, one_integer_number[bx]
+	inc		count_write_int
+	mov		al, one_integer_number[bx]
+	cmp		al, 0h
+	je		Third_int_number
+	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
 
-	inc		count_write_int
+Third_int_number:	
 	; Terceiro Dígito.
 	mov		bx, count_write_int
-	mov		dl, one_integer_number[bx]
+	mov		al, one_integer_number[bx]
+	cmp		al, 0h
+	je		Continue_writing_numbers
+	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
 
+Continue_writing_numbers:
 	; Virgula
+	mov		bx, FileHandleDst
 	mov		dl, ','
 	call	setChar
 
 	; Escreve a parte fracionária.
+First_frac_number:
 	; Primeiro dígito.
 	mov		bx, count_write_frac
-	mov		dl, one_frac_number[bx]
+	inc		count_write_frac
+	mov		al, one_frac_number[bx]
+	cmp		al, 0h
+	je		Second_frac_number
+	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
 
-	inc	count_write_frac
+Second_frac_number:
 	; Segundo dígito.
 	mov		bx, count_write_frac
-	mov		dl, one_frac_number[bx]
+	mov		al, one_frac_number[bx]
+	cmp		al, 0h
+	je		Continue_writing_numbers2
+	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
 
+Continue_writing_numbers2:
+	mov		bx, FileHandleDst
 	; Escreve ' '
 	mov		dl, ' '
 	call	setChar
@@ -351,8 +374,6 @@ Continue_write:
 	mov		dl, ' '
 	call	setChar
 
-
-
 	; Escreve 'CR LF'
 	mov		dl, CR
 	call	setChar
@@ -362,19 +383,19 @@ Continue_write:
 
 	; Reseta as variáveis.
 Reset_numbers:
-	;for (i=0; i<3; ++i)
-	;	one_integer_number[i] = 0
-	lea		di,one_integer_number
-	mov		cx,0
-	mov		ax,0
-	rep 	stosw
-
-	;for (i=0; i<2; ++i)
-	;	one_frac_number[i] = 0
-	lea		di,one_frac_number
-	mov		cx,0
-	mov		ax,0
-	rep 	stosw
+	push	bx
+	mov		bx, 0
+	mov		one_integer_number[bx], 0h
+	inc		bx
+	mov		one_integer_number[bx], 0h
+	inc		bx
+	mov		one_integer_number[bx], 0h
+	
+	mov		bx, 0
+	mov		one_frac_number[bx], 0h
+	inc		bx
+	mov		one_frac_number[bx], 0h
+	pop		bx
 
 	; Reseta as flags.
 	mov		integer_flag, 0h
