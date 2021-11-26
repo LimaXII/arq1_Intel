@@ -148,6 +148,7 @@ Again_mid_jump:
 	; Lida com a parte inteira.
 Continua3_int:
 	;bl = FileBuffer[x]
+	mov		bh, 0h
 	mov		bl,FileBuffer		; Pega o caractere lido do arquivo. 
 	cmp		bl, CR				; Testa se o caractere é um Carriage Return.
 	je		New_line			; Se for, a linha terminou.
@@ -163,11 +164,14 @@ Continua3_int:
 	ja		Again				; Busca o próximo caractere.
 	cmp		bl, 39h				; Testa se é algo menor que 9h.
 	jb		Found_a_Integer_Number_mid_jump		; Se for, lida com o número lido.
+	cmp		bl, 39h				; Testa se é algo menor que 9h.
+	je		Found_a_Integer_Number_mid_jump		; Se for, lida com o número lido.
 	jmp		Again				; Senão, busca o próximo caractere.
 
 	; Lida com a parte fracionária.
 Continua3_frac:
 	;bl = FileBuffer[0]
+	mov		bh, 0h
 	mov		bl,FileBuffer		; Pega o caractere lido do arquivo. 
 	cmp		bl, CR				; Testa se o caractere é um Carriage Return.
 	je		New_line			; Se for, a linha terminou.
@@ -179,6 +183,8 @@ Continua3_frac:
 	ja		Again				; Busca o próximo caractere.
 	cmp		bl, 39h				; Testa se é algo menor que 9h.
 	jb		Found_a_Frac_Number	; Se for, lida com o número lido.
+	cmp		bl, 39h				; Testa se é algo menor que 9h.
+	je		Found_a_Frac_Number	; Se for, lida com o número lido.
 	jmp		Again_mid_jump		; Senão, busca o próximo caractere.
 
 Deal_with_separator:
@@ -216,32 +222,30 @@ End_line:
 Numbers_OK:
 	push	bx							; Salva bx na pilha.
 	mov		bx, final_int_count			; bx recebe a última posição registrada no vetor dos inteiros.
-	mov		final_int_count[bx], ax		; Coloca o número na determinada posição do vetor.
+	mov		final_int_number[bx], ax	; Coloca o número na determinada posição do vetor.
 	inc		final_int_count				; Incrementa a variável da posição do vetor.
 	mov		bx, final_frac_count		; bx recebe a última posição registrada no vetor dos fracionários.
-	mov		final_frac_count[bx], cx	; Coloca o número na determinada posição do vetor.
+	mov		final_frac_number[bx], cx	; Coloca o número na determinada posição do vetor.
 	inc		final_frac_count			; Incrementa a variável da posição do vetor.
 	pop		bx							; Recupera o backup de bx.
 	jmp		Write_in_dest				; Escreve no arquivo de saída, a linha lida.
 
 	; Caso tenha encontrado um número inteiro na linha.
 Found_a_Integer_Number:
-	push	bx							; Salva bx na pilha.
+	mov		ah, 0
 	mov		al, bl						; al = o número lido
 	mov		bx,int_sig					; bx = Qual é o número significativo dos inteiros.
 	mov		one_integer_number[bx],al	; Coloca o número lido na sua determinada posição.
 	inc		int_sig 					; Incrementa o número significativo.
-	pop		bx							; Recupera o backup de bx.
 	jmp		Again						; Busca o próximo caractere.
 
 	; Caso tenha encontrado um número fracionário na linha.
 Found_a_Frac_Number:
-	push	bx							; Salva bx na pilha.
+	mov		ah, 0
 	mov		al, bl						; al = o número lido
 	mov		bx,frac_sig					; bl = Qual é o número significativo dos inteiros.
 	mov		one_frac_number[bx],al		; Coloca o número lido na sua determinada posição.			
 	inc		frac_sig 					; Incrementa o número significativo.
-	pop		bx							; Recupera o backup de bx.
 	jmp		Again						; Busca o próximo caractere.	
 
 Write_in_dest:
@@ -303,24 +307,24 @@ Continue_write:
 First_int_number:
 	; Primeiro dígito.
 	mov		bx, count_write_int
-	inc		count_write_int
 	mov		al, one_integer_number[bx]
 	cmp		al, 0h
 	je		Second_int_number
 	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
+	inc		count_write_int
 
 Second_int_number:	
 	; Segundo Dígito.
 	mov		bx, count_write_int
-	inc		count_write_int
 	mov		al, one_integer_number[bx]
 	cmp		al, 0h
 	je		Third_int_number
 	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
+	inc		count_write_int
 
 Third_int_number:	
 	; Terceiro Dígito.
@@ -342,13 +346,13 @@ Continue_writing_numbers:
 First_frac_number:
 	; Primeiro dígito.
 	mov		bx, count_write_frac
-	inc		count_write_frac
 	mov		al, one_frac_number[bx]
 	cmp		al, 0h
 	je		Second_frac_number
 	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
+	inc		count_write_frac
 
 Second_frac_number:
 	; Segundo dígito.
@@ -382,28 +386,21 @@ Continue_writing_numbers2:
 	jmp		Reset_numbers				; Reseta os números. Para depois ir para a próxima linha.
 
 	; Reseta as variáveis.
-Reset_numbers:
-	push	bx
-	mov		bx, 0
-	mov		one_integer_number[bx], 0h
-	inc		bx
-	mov		one_integer_number[bx], 0h
-	inc		bx
-	mov		one_integer_number[bx], 0h
-	
-	mov		bx, 0
-	mov		one_frac_number[bx], 0h
-	inc		bx
-	mov		one_frac_number[bx], 0h
-	pop		bx
+Reset_numbers:	
+	mov		one_integer_number[0], 0h	
+	mov		one_integer_number[1], 0h
+	mov		one_integer_number[2], 0h		
+	mov		one_frac_number[0], 0h
+	mov		one_frac_number[1], 0h
 
 	; Reseta as flags.
-	mov		integer_flag, 0h
-	mov		frac_flag, 0h
-	mov		int_sig, 0h			
-	mov		frac_sig, 0h
-	mov		count_write_int, 0h
-	mov		count_write_frac, 0h
+	mov		integer_flag, 0
+	mov		frac_flag, 0
+	mov		int_sig, 0			
+	mov		frac_sig, 0
+	mov		count_write_int, 0
+	mov		count_write_frac, 0
+	mov		flag, 0
 
 	; Procura o próximo caractere.
 	jmp		Again
@@ -675,7 +672,7 @@ Return_from_check_int:
 	ret
 
 invalid_integer:
-	mov		integer_flag, 0h
+	mov		integer_flag, 0
 	ret
 
 check_integer_number endp
