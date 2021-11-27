@@ -10,6 +10,7 @@ Random				db		4 dup (?)		; Essa variável vai ser alocada dps.
 FileType			db		".res", 0		; Tipo do arquivo.
 Count_file			dw		0				; Variável que vai guardar o fim do nome do arquivo.
 FileBuffer			db		10 dup (?)		; Buffer de leitura do arquivo.
+FileBuffer2			dw		0				; Buffer de leitura do arquivo.
 FileHandle			dw		0				; Handler do arquivo.
 FileHandleDst		dw		0				; Handler do arquivo de saída.
 FileNameBuffer		db		150 dup (?)		; Buffer do nome do arquivo.
@@ -21,6 +22,7 @@ MsgErroCreateFile	db		"Erro na criação do arquivo.", CR, LF, 0
 MsgErroWriteFile	db		"Erro na escrita do arquivo.", CR, LF, 0
 depurate			db		"Ate aqui, ok.", CR, LF, 0					; String usada para depurar o código.
 MsgCRLF				db		CR, LF, 0
+string_num			dw		0	
 
 invalid_input_flag	db		0				; Variável caso algum número tenha sido escrito com uma casa decimal a mais.
 flag				db		0				; Variável para testar algumas flags de jump.
@@ -31,14 +33,15 @@ one_frac_number		db		2 dup (0h)		; Variável para guardar um número fracionári
 int_sig				dw		0				; Número significativo de inteiros.
 frac_sig			dw		0				; Número significativo de fracionários.
 
-final_int_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números inteiros.
+final_int_number	dw		200 dup (?)		; Variável que irá guardar todos os possíveis números inteiros.
 final_int_count		dw		0				; Variável para contar a posição do vetor de inteiros.
 count_write_int		dw		0	
-final_frac_number	dw		100 dup (?)		; Variável que irá guardar todos os possíveis números fracionários.
+final_frac_number	dw		200 dup (?)		; Variável que irá guardar todos os possíveis números fracionários.
 final_frac_count	dw		0				; Variável para contar a posição do vetor de fracionários.
 count_write_frac	dw		0
 a_int_number		dw		0				; Um número inteiro final.
 a_frac_number		dw		0				; Um número fracionário final.
+num_count			dw		0
 
 Nothing				db		100 dup (?)		; Algo ta consumindo essa variável...
 write_count			dw		1 				; Variável utilizada para contar no programa de saída.
@@ -213,16 +216,8 @@ New_line:
 Change_BX:			
 	mov		bx, 46h
 
-Continue_Step1:
-	; Remove depois, testa a flag
-	mov		soy_una, bx
-	lea		bx, soy_una
-	call 	printf_s
-	; ----------------------------
-	;printf ("\r\n");
-	lea		bx,MsgCRLF
-	call	printf_s
-	
+Continue_Step1:	
+	mov		soy_una, bx	
 	cmp		soy_una, 44h
 	je		Next_step
 	jmp		End_line					; Termina de ler a linha.	
@@ -240,7 +235,6 @@ Change_BX2:
 	mov		bx, 46h
 	
 Continue_Step2:
-
 	cmp		bx, 44h	
 	je      Numbers_OK					; Se for válido, insere eles nos vetores.	
 	jmp		End_line					; Termina de ler a linha.
@@ -254,11 +248,11 @@ Numbers_OK:
 	mov		bx, final_int_count			; bx recebe a última posição registrada no vetor dos inteiros.
 	mov		ax, a_int_number			; ax recebe o número inteiro.
 	mov		final_int_number[bx], ax	; Coloca o número na determinada posição do vetor.
-	inc		final_int_count				; Incrementa a variável da posição do vetor.
+	add		final_int_count, 2h			; Incrementa a variável da posição do vetor.
 	mov		bx, final_frac_count		; bx recebe a última posição registrada no vetor dos fracionários.
 	mov		ax, a_frac_number			; ax recebe o número fracionário.
 	mov		final_frac_number[bx], ax	; Coloca o número na determinada posição do vetor.
-	inc		final_frac_count			; Incrementa a variável da posição do vetor.
+	add		final_frac_count, 2h		; Incrementa a variável da posição do vetor.
 	jmp		Write_in_dest				; Escreve no arquivo de saída, a linha lida.
 
 	; Caso tenha encontrado um número inteiro na linha.
@@ -290,6 +284,7 @@ Invalid_input:
 Write_in_dest:
 	; Converte o número de contagem para string	
 	; Escreve o índice no arquivo.	
+
 	mov		ax,write_count3
 	lea		bx,string_convet
 	call	sprintf_w					; Converte int pra char	
@@ -342,6 +337,30 @@ Continue_write:
 	mov		dl, ' '
 	call	setChar
 
+	mov		bx, num_count
+	mov		ax, final_int_number[bx]
+	mov		bx, FileHandleDst
+	cmp		ax, 10
+	jb		Two_spaces
+	cmp		ax, 100
+	jb		One_space
+	jmp		First_int_number
+
+Two_spaces:
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+	jmp		First_int_number
+
+One_space:
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+	jmp		First_int_number
+
 	; Escreve a parte inteira.
 First_int_number:
 	; Primeiro dígito.
@@ -391,7 +410,20 @@ First_frac_number:
 	mov		dl, al
 	mov		bx, FileHandleDst
 	call	setChar
+
+	mov		al, one_frac_number[1]
+	mov		bx, FileHandleDst
+	cmp		al, 0h
+	je		Putfrac_0_on_string	
 	inc		count_write_frac
+	jmp		Second_frac_number
+
+Putfrac_0_on_string	:
+	; Escreve '0'
+	mov		dl, '0'
+	call	setChar	
+	inc		count_write_frac
+	jmp		Second_frac_number
 
 Second_frac_number:
 	; Segundo dígito.
@@ -416,6 +448,34 @@ Continue_writing_numbers2:
 	; Escreve ' '
 	mov		dl, ' '
 	call	setChar
+
+	; Escreve a paridade do número.
+Paridade_int_calculator:
+	; Coloca a paridade par do inteiro.
+	mov		bx, num_count
+	mov		ax, final_int_number[bx]
+	call	paridade_par
+	mov		ax, dx
+	lea		bx, string_convet
+	call	sprintf_w
+
+	mov  	bx, FileHandleDst
+	mov		dl, string_convet
+	call	setChar
+	
+	; Coloca a paridade par dos decimais.
+	mov		bx, num_count
+	mov		ax, final_frac_number[bx]
+	call	paridade_par
+	mov		ax, dx
+	lea		bx, string_convet
+	call	sprintf_w
+
+	mov  	bx, FileHandleDst
+	mov		dl, string_convet
+	call	setChar
+
+	add		num_count, 2h
 
 	; Escreve 'CR LF'
 	mov		dl, CR
@@ -445,6 +505,7 @@ Reset_numbers:
 	jmp		Again
 	
 Continue_write2:
+	mov		num_count, 0h
 	mov		bx, FileHandleDst			; BX = FileHandleDst.
 	; Escreve 'Soma:'
 	mov		dl, 'S'
@@ -457,6 +518,26 @@ Continue_write2:
 	call	setChar
 	mov		dl, ':'
 	call	setChar
+
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+
+	mov		bx, 0 
+	mov		ax, 0
+	mov		cx, num_count
+Calcula_soma:
+	mov 	ax, final_int_number[bx] 
+	;cmp		bx, cx
+	;inc		bx
+	;jne		Calcula_soma
+
+
+	lea		bx, string_num
+	call	sprintf_w
+	mov		bx, FileHandleDst		; BX = FileHandleDst.
+	mov		dx, string_num			; dl = caractere a ser escrito.
+	call	setWord
 
 	; Escreve 'CR LF'
 	mov		dl, CR
@@ -743,6 +824,13 @@ atoi_frac2:
 	jmp		atoi_frac2
 atoi_frac1:
 	; return
+	cmp		ax, 10
+	jb		putfrac_0
+	ret
+
+putfrac_0:
+	mov		cx,10
+	mul		cx
 	ret
 
 inc_frac_1:
@@ -836,17 +924,59 @@ setChar	proc	near
 	lea		dx,FileBuffer
 	int		21h
 	ret
-setChar	endp	
+setChar	endp		
 
 ;--------------------------------------------------------------------
-; Escreve no arquivo de saída.;
-; ENTRADA: Bx -> FileHandle
+;Entra: BX -> file handle
+;       dx -> word
+;Sai:   AX -> numero de caracteres escritos
+;		CF -> "0" se escrita ok
 ;--------------------------------------------------------------------
-write_char	proc	near
-
-
+setWord	proc	near
+	mov		ah,40h
+	mov		cx,1
+	mov		FileBuffer2	,dx
+	lea		dx, FileBuffer2	
+	int		21h
 	ret
-write_char endp
+setWord	endp		
+
+;--------------------------------------------------------------------
+; Lida com a partidade par do número.
+;	ENTRADA: AX -> número.
+;	SAÍDA: dl -> paridade (0) ou (1).
+;--------------------------------------------------------------------
+paridade_par	proc	near
+
+	mov		dx, 0h
+Loop_shift:	
+	shr 	ax, 1
+	jc      Invert_dl	
+	jmp		Par_test
+
+Invert_dl:
+	not     dl
+	jmp		Par_test
+
+Par_test:
+	cmp		ax, 0h
+	je		Continue_par
+	jmp		Loop_shift
+
+Continue_par:
+	cmp		dl, 255
+	je     	Switch_FF_to_1
+	jmp     End_shift
+
+End_shift:	
+	ret
+
+Switch_FF_to_1:
+	mov		dl, 1h
+	ret
+
+paridade_par endp
+
 ;--------------------------------------------------------------------
 ;   Fim do programa.
 ;--------------------------------------------------------------------
