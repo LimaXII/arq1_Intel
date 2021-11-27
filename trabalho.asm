@@ -3,6 +3,7 @@
 
 CR		equ		0dh
 LF		equ		0ah 
+null	equ		0h
 
 	.data
 FileName			db		8 dup (?)		; Nome do arquivo a ser lido.
@@ -16,6 +17,7 @@ FileHandleDst		dw		0				; Handler do arquivo de saída.
 FileNameBuffer		db		150 dup (?)		; Buffer do nome do arquivo.
 
 MsgPedeArquivo		db		"Nome do arquivo: ", 0
+MsgNull				db		null
 MsgErroOpenFile		db		"Erro na abertura do arquivo.", CR, LF, 0
 MsgErroReadFile		db		"Erro na leitura do arquivo.", CR, LF, 0
 MsgErroCreateFile	db		"Erro na criação do arquivo.", CR, LF, 0
@@ -44,6 +46,9 @@ a_int_number		dw		0				; Um número inteiro final.
 a_frac_number		dw		0				; Um número fracionário final.
 num_count			dw		0
 Soma_total			dw		0				; Variável para guardar a soma dos números.
+Soma_total_a_ser_add	dw		0			
+Soma_total_frac		dw		0				; Variável para guardar a soma da parte fracionária.
+Soma_div			dw		0				; Variável para guardar o número que irá dividir a soma.
 
 Nothing				db		100 dup (?)		; Algo ta consumindo essa variável...
 write_count			dw		1 				; Variável utilizada para contar no programa de saída.
@@ -526,6 +531,37 @@ Continue_write2:
 	call	setChar
 
 	mov		bx, 0
+	mov		ax, 0
+Calcula_soma_frac:
+	cmp		final_frac_number[bx], 0
+	jne		Calcula_frac
+	add		bx, 2
+	cmp		bx, 200
+	je		Continua_clc_frac
+	jmp		Calcula_soma_frac
+
+Calcula_frac:
+	mov		ax, final_frac_number[bx]
+	add		Soma_total_frac, ax
+	add		bx, 2
+	cmp     bx, 200
+	je		Continua_clc_frac
+	jmp		Calcula_soma_frac	
+
+Continua_clc_frac:
+
+	lea		bx, MsgNull    				; Por algum motivo só calcula certo se eu printar isso (???)
+	call	printf_s					; Não sei como arrumar isso...
+
+	mov		ax, Soma_total_frac
+	mov     bx, 100
+	div		bx
+	mov		Soma_total_a_ser_add, ax
+	mov		Soma_total_frac, dx
+	jmp		Continua_calc_2
+
+Continua_calc_2:
+	mov		bx, 0
 	mov		ax, 0	
 Calcula_soma_Int:
 	cmp		final_int_number[bx], 0
@@ -538,24 +574,30 @@ Calcula_soma_Int:
 Calcula_int:
 	mov 	ax, final_int_number[bx]
 	add		Soma_total, ax
+	add		Soma_div, 1
 	add		bx, 2
 	cmp		bx, 200
 	je		Continua_calc
 	jmp		Calcula_soma_Int
 
 Continua_calc:
+	mov		ax, Soma_total_a_ser_add
+	add		Soma_total, ax
 	mov		ax, Soma_total
 	lea		bx, string_num
-	call	sprintf_w
-	lea		bx, string_num
-	call	printf_s
-		
+	call	sprintf_w		
 	lea		dx, string_num		; dl = caractere a ser escrito.
 	call	setWord
 
 	; Escreve ' '
-	mov		dl, ':'
+	mov		dl, ','
 	call	setChar
+
+	mov		ax, Soma_total_frac
+	lea		bx, string_num
+	call	sprintf_w		
+	lea		dx, string_num		; dl = caractere a ser escrito.
+	call	setWord2
 
 	; Escreve 'CR LF'
 	mov		dl, CR
@@ -950,7 +992,7 @@ setChar	endp
 ;Sai:   AX -> numero de caracteres escritos
 ;		CF -> "0" se escrita ok
 ;--------------------------------------------------------------------
-setWord	proc	near
+setWord		proc	near
 	mov		cx, 0
 	push	ax
 	mov		bx, dx
@@ -972,6 +1014,21 @@ End_word:
 	ret
 setWord	endp
 
+;--------------------------------------------------------------------
+;Entra: BX -> file handle
+;       dl -> caractere
+;Sai:   AX -> numero de caracteres escritos
+;		CF -> "0" se escrita ok
+;--------------------------------------------------------------------
+setWord2	proc	near	
+	
+End_word2:
+	mov		bx, FileHandleDst
+	mov		cx, 2
+	mov		ah,40h
+	int		21h
+	ret
+setWord2	endp
 ;--------------------------------------------------------------------
 ; Lida com a partidade par do número.
 ;	ENTRADA: AX -> número.
