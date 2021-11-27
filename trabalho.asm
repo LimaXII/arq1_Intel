@@ -49,6 +49,9 @@ Soma_total			dw		0				; Variável para guardar a soma dos números.
 Soma_total_a_ser_add	dw		0			
 Soma_total_frac		dw		0				; Variável para guardar a soma da parte fracionária.
 Soma_div			dw		0				; Variável para guardar o número que irá dividir a soma.
+Media_inteira		dw		0
+Media_frac			dw		0
+Media_3frac			dw		0
 
 Nothing				db		100 dup (?)		; Algo ta consumindo essa variável...
 write_count			dw		1 				; Variável utilizada para contar no programa de saída.
@@ -290,8 +293,11 @@ Invalid_input:
 
 Write_in_dest:
 	; Converte o número de contagem para string	
-	; Escreve o índice no arquivo.	
+	; Escreve o índice no arquivo.
+	cmp		write_count3, 1h
+	je		Final_test	
 
+Not_final_test:
 	mov		ax,write_count3
 	lea		bx,string_convet
 	call	sprintf_w					; Converte int pra char	
@@ -317,6 +323,11 @@ Write_in_dest:
 	inc		write_count					; Incrementa o contador.
 	jmp		Continue_write
 
+Final_test:
+	cmp		write_count, 1h
+	je		Again
+	jmp     Not_final_test
+
 	; Incrementa o segundo contador significativo.
 First_inc:
 	mov 	write_count, 0h
@@ -328,7 +339,7 @@ First_inc:
 	; Incrementa o terceiro contador significativo.
 Second_inc:
 	mov		write_count2, 0h
-	inc		write_count3
+	inc		write_count3			
 	jmp		Continue_write
 
 Continue_write:
@@ -619,7 +630,83 @@ Continua_calc:
 	mov		dl, ':'
 	call	setChar
 
+	; Escreve ' '
+	mov		dl, ' '
+	call	setChar
+
+Calcula_media:
+	mov		ax, Soma_total
+	mov		bx, 100
+	mul		bx
+	add		ax, Soma_total_frac
+	mov		bx, Soma_div
+	div		bx
+
+	; Escreve a parte inteira da média.
+	mov		Media_inteira, ax
+	cmp		Media_inteira, 9999
+	ja		need_word3
+	cmp		Media_inteira, 999
+	ja		need_word2
+	cmp		Media_inteira, 99
+	ja		need_word1
+	jmp		need_word1
+
+need_word1:
+	lea		bx, string_num
+	call	sprintf_w		
+	lea		dx, string_num		; dx = word a ser escrita.
+	call	setwordone
+	jmp     Ending2
+
+need_word2:
+	lea		bx, string_num
+	call	sprintf_w		
+	lea		dx, string_num		; dx = word a ser escrita.
+	call	setWord2
+	jmp     Ending3
+
+need_word3:
+	lea		bx, string_num
+	call	sprintf_w		
+	lea		dx, string_num		; dx = word a ser escrita.
+	call	setWord3
+	jmp     Ending
+
+Ending:	
+
+	; Escreve ','
+	mov		dl, ','
+	call	setChar
+
+	lea		dx, string_num
+	add		dx, cx
+	add		dx, 2h
+	call	setWord2
 	jmp		CloseAndFinal
+
+Ending2:
+	; Escreve ','
+	mov		dl, ','
+	call	setChar
+
+	lea		dx, string_num
+	add		dx, cx
+	call	setWord2
+	jmp		CloseAndFinal
+
+Ending3:
+	; Escreve ','
+	mov		dl, ','
+	call	setChar
+
+	lea		dx, string_num
+	add		dx, cx
+	add		dx, 1h
+	call	setWord2
+	jmp		CloseAndFinal
+
+
 
 	; Fecha o arquivo de ENTRADA.
 CloseAndFinal:
@@ -988,7 +1075,7 @@ setChar	endp
 
 ;--------------------------------------------------------------------
 ;Entra: BX -> file handle
-;       dl -> caractere
+;       dx -> word
 ;Sai:   AX -> numero de caracteres escritos
 ;		CF -> "0" se escrita ok
 ;--------------------------------------------------------------------
@@ -1016,7 +1103,7 @@ setWord	endp
 
 ;--------------------------------------------------------------------
 ;Entra: BX -> file handle
-;       dl -> caractere
+;       dx -> word
 ;Sai:   AX -> numero de caracteres escritos
 ;		CF -> "0" se escrita ok
 ;--------------------------------------------------------------------
@@ -1029,6 +1116,53 @@ End_word2:
 	int		21h
 	ret
 setWord2	endp
+
+;--------------------------------------------------------------------
+;Entra: BX -> file handle
+;       dx -> word
+;Sai:   AX -> numero de caracteres escritos
+;		CF -> "0" se escrita ok
+;--------------------------------------------------------------------
+setWord3	proc	near	
+	mov		cx, 0
+	push	ax
+	mov		bx, dx
+Loop_for_cx3:
+	cmp 	[bx], 0h
+	jne		inc_cx3
+	jmp		End_word3
+
+inc_cx3:
+	inc		cx
+	cmp		cx, 3
+	je		End_word3
+	add     bx, 1
+	jmp		Loop_for_cx3
+
+End_word3:	
+	pop		ax
+	mov		bx, FileHandleDst
+	mov		ah,40h
+	int		21h
+	ret
+setWord3	endp
+
+;--------------------------------------------------------------------
+;Entra: BX -> file handle
+;       dx -> word
+;Sai:   AX -> numero de caracteres escritos
+;		CF -> "0" se escrita ok
+;--------------------------------------------------------------------
+
+setWordone	proc	near	
+	
+End_wordone:
+	mov		bx, FileHandleDst
+	mov		cx, 1
+	mov		ah,40h
+	int		21h
+	ret
+setWordone	endp
 ;--------------------------------------------------------------------
 ; Lida com a partidade par do número.
 ;	ENTRADA: AX -> número.
